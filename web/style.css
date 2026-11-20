@@ -1,0 +1,104 @@
+:root{
+  --bg:#0f1115; --panel:#161a21; --panel2:#1b2029; --line:#262d38;
+  --text:#e8ecf2; --muted:#8b95a5; --accent:#4d8dff; --accent2:#2b6cf6;
+  --ok:#33c37d; --warn:#f5a623; --danger:#ff5f6d; --gold:#ffcc66;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:14px/1.55 "Microsoft YaHei","PingFang SC",-apple-system,Segoe UI,sans-serif}
+h1{font-size:18px;margin:0}
+h2{font-size:17px;margin:0 0 12px}
+code{background:#0b0d11;padding:1px 5px;border-radius:4px;font-size:12px}
+.top{display:flex;align-items:center;justify-content:space-between;
+  padding:14px 22px;border-bottom:1px solid var(--line);background:#12161c;
+  position:sticky;top:0;z-index:20}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;
+  background:linear-gradient(135deg,#2b6cf6,#5ad0c4);font-weight:700;font-size:13px;color:#fff}
+.sub{margin:0;color:var(--muted);font-size:12px}
+.top-right{display:flex;align-items:center;gap:10px}
+.pill{padding:4px 10px;border-radius:20px;font-size:12px;border:1px solid var(--line)}
+.pill.idle{color:var(--muted)}
+.pill.ok{color:var(--ok);border-color:rgba(51,195,125,.4);background:rgba(51,195,125,.08)}
+.pill.bad{color:var(--danger);border-color:rgba(255,95,109,.4);background:rgba(255,95,109,.08)}
+.pill.run{color:var(--warn);border-color:rgba(245,166,35,.4);background:rgba(245,166,35,.08)}
+main{max-width:1500px;margin:0 auto;padding:18px 22px 60px}
+button{cursor:pointer;border-radius:8px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--text);padding:8px 14px;font-size:13px}
+button:hover{border-color:#3a4657}
+button.primary{background:var(--accent2);border-color:var(--accent2);color:#fff}
+button.ok{background:#1f6b47;border-color:#1f6b47;color:#d6ffe9}
+button.ghost{background:transparent}
+button.small{padding:5px 10px;font-size:12px}
+button:disabled{opacity:.5;cursor:not-allowed}
+.banner{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  background:linear-gradient(90deg,rgba(43,108,246,.18),rgba(43,108,246,.04));
+  border:1px solid rgba(77,141,255,.35);border-radius:12px;padding:14px 16px;margin-bottom:16px}
+.banner strong{display:block;margin-bottom:2px}
+.banner span{color:var(--muted);font-size:13px}
+.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.spacer{flex:1}
+.muted{color:var(--muted);font-size:12.5px}
+select{background:var(--panel2);color:var(--text);border:1px solid var(--line);
+  border-radius:6px;padding:4px 6px;margin-left:4px}
+.progress{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:10px 12px;margin-bottom:14px}
+.bar{height:5px;background:#0b0d11;border-radius:4px;overflow:hidden}
+#barFill{height:100%;width:8%;background:linear-gradient(90deg,#2b6cf6,#5ad0c4);
+  transition:width .4s}
+.progress pre{margin:8px 0 0;max-height:150px;overflow:auto;color:var(--muted);
+  font-size:12px;white-space:pre-wrap;font-family:Consolas,monospace}
+.groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));
+  gap:10px;margin-bottom:16px}
+.gcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.gcard .gname{font-size:13px;font-weight:600;display:flex;justify-content:space-between;
+  align-items:center;gap:6px}
+.gcard .grow{display:flex;justify-content:space-between;color:var(--muted);
+  font-size:12px;margin-top:6px}
+.gcard .ratio{font-size:18px;font-weight:700;margin-top:6px}
+.tagx{font-size:10.5px;padding:1px 6px;border-radius:10px;border:1px solid}
+.hi{color:var(--danger);border-color:rgba(255,95,109,.45);background:rgba(255,95,109,.1)}
+.mid{color:var(--warn);border-color:rgba(245,166,35,.45);background:rgba(245,166,35,.1)}
+.lo{color:var(--ok);border-color:rgba(51,195,125,.45);background:rgba(51,195,125,.1)}
+.tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin-bottom:14px}
+.tab{background:transparent;border:none;border-bottom:2px solid transparent;
+  border-radius:0;padding:10px 14px;color:var(--muted)}
+.tab.active{color:var(--text);border-bottom-color:var(--accent)}
+.pane-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;
+  margin-bottom:8px;flex-wrap:wrap}
+.hint{margin:0;color:var(--muted);font-size:12.5px;max-width:900px}
+.pane-actions{display:flex;gap:8px;align-items:center}
+.pane-actions.left{margin:10px 0}
+.meta{color:var(--muted);font-size:12px;margin:6px 0 10px;line-height:1.7}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:1080px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;
+  font-size:12.8px;vertical-align:top}
+th{position:sticky;top:0;background:#12161c;color:#b9c2d0;font-weight:600;
+  white-space:nowrap;z-index:2}
+tbody tr:hover{background:#1a1f28}
+td.reason{color:#c2cad6;line-height:1.6;max-width:560px}
+td.name{font-weight:600;min-width:180px}
+.pri{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11.5px;border:1px solid}
+.pri.高{color:#ff8a94;border-color:rgba(255,95,109,.5);background:rgba(255,95,109,.12)}
+.pri.中{color:#ffc46b;border-color:rgba(245,166,35,.5);background:rgba(245,166,35,.12)}
+.pri.低{color:#7fd8ad;border-color:rgba(51,195,125,.5);background:rgba(51,195,125,.1)}
+.pri.暂缓{color:var(--muted);border-color:var(--line)}
+.gtag{font-size:11.5px;color:#9db7e6;background:rgba(77,141,255,.12);
+  border:1px solid rgba(77,141,255,.3);padding:1px 7px;border-radius:10px;white-space:nowrap}
+textarea{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  color:var(--text);padding:12px;font:13px/1.6 Consolas,"Microsoft YaHei",monospace;resize:vertical}
+.foot{margin-top:22px;line-height:1.8}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:grid;place-items:center;z-index:50}
+.modal-card{width:min(560px,92vw);background:var(--panel);border:1px solid var(--line);
+  border-radius:14px;padding:22px}
+.modal label{display:block;margin:12px 0;font-size:13px;color:#cbd3df}
+.modal input{width:100%;margin-top:6px;background:#0f1218;border:1px solid var(--line);
+  border-radius:8px;color:var(--text);padding:9px 11px;font-size:13px}
+.req{color:var(--danger);font-size:11px;margin-left:6px}
+.tip{color:var(--muted);font-size:12px;line-height:1.7}
+.modal-actions{display:flex;gap:10px;margin-top:18px;align-items:center}
+details{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px}
+summary{cursor:pointer;color:#9db7e6;font-size:13px}
+.hidden{display:none!important}
+.empty{padding:26px;text-align:center;color:var(--muted)}
