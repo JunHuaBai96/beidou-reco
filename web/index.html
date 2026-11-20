@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>北斗短剧素材推荐助手</title>
+<link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="logo">北斗</span>
+    <div>
+      <h1>短剧素材推荐助手</h1>
+      <p class="sub">按发布组推荐 · 剧名定组 · v1.0.0</p>
+    </div>
+  </div>
+  <div class="top-right">
+    <span id="statusPill" class="pill idle">未连接</span>
+    <button id="btnSettings" class="ghost">设置 API Key</button>
+  </div>
+</header>
+
+<main>
+  <section id="setupBanner" class="banner hidden">
+    <div>
+      <strong>还没有配置 API Key</strong>
+      <span>填入自己的北斗 API Key 后即可拉取发布组、素材库、出单与剧目广场数据。</span>
+    </div>
+    <button id="btnSetup" class="primary">去配置</button>
+  </section>
+
+  <section class="toolbar">
+    <button id="btnRefresh" class="primary">拉取 / 刷新数据</button>
+    <span id="ctxInfo" class="muted">数据：未加载</span>
+    <div class="spacer"></div>
+    <label class="muted">每组条数
+      <select id="perGroup">
+        <option>2</option><option selected>3</option><option>4</option><option>5</option>
+      </select>
+    </label>
+    <button id="btnRun" class="ok">生成推荐</button>
+  </section>
+
+  <section id="progress" class="progress hidden">
+    <div class="bar"><div id="barFill"></div></div>
+    <pre id="log"></pre>
+  </section>
+
+  <section id="groups" class="groups"></section>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="reco">① 按发布组推荐</button>
+    <button class="tab" data-tab="assign">② 剧名定组</button>
+  </nav>
+
+  <section id="tab-reco" class="tabpane">
+    <div class="pane-head">
+      <p class="hint">覆盖全部活跃分组（停用为隔离区不出推荐），按素材紧张度（剩余集数/主页数）降序；同一剧目不会跨组重复。</p>
+      <div class="pane-actions">
+        <button id="btnExport1" class="ghost small">导出 CSV</button>
+        <button id="btnCopy1" class="ghost small">复制表格</button>
+      </div>
+    </div>
+    <div id="recoMeta" class="meta"></div>
+    <div class="table-wrap"><table id="tblReco"></table></div>
+  </section>
+
+  <section id="tab-assign" class="tabpane hidden">
+    <div class="pane-head">
+      <p class="hint">每行一个剧名（也支持逗号/顿号分隔），生成表头固定为：剧目、上线、类型、题材、剧场、推广、推荐理由、优先级。</p>
+      <div class="pane-actions">
+        <button id="btnExport2" class="ghost small">导出 CSV</button>
+        <button id="btnCopy2" class="ghost small">复制表格</button>
+      </div>
+    </div>
+    <textarea id="names" rows="6" placeholder="The Mafia's Forced Bride&#10;The Elf Queen's Cursed Crown&#10;Moonborn Reckoning"></textarea>
+    <div class="pane-actions left">
+      <button id="btnAssign" class="ok">生成定组表</button>
+      <span id="assignInfo" class="muted"></span>
+    </div>
+    <div class="table-wrap"><table id="tblAssign"></table></div>
+  </section>
+
+  <section class="foot muted">
+    类型口径：一周内上线=新剧 · 推广人数&gt;1000=热门 · 平台标注=爆款 · 其余=老剧。
+    数据源：北斗 MCP（发布组/素材库/出单/剧目广场）+ 运营看板 + 上新监控面板 + 飞书四表（可选）。
+  </section>
+</main>
+
+<div id="modal" class="modal hidden">
+  <div class="modal-card">
+    <h2>设置</h2>
+    <label>北斗 API Key <span class="req">必填</span>
+      <input id="apiKey" type="password" placeholder="bd_xxxxxxxxxxxxxxxx"/>
+    </label>
+    <p class="tip">Key 只保存在本机 <code>%APPDATA%\BeidouReco\config.json</code>，不会上传到任何地方。</p>
+    <details>
+      <summary>飞书四表同步（可选）</summary>
+      <p class="tip">不填也能用：推荐将退回 MCP + 看板 + 监控面板三源。填入飞书自建应用的 App ID / Secret（需多维表格、电子表格只读权限）可接入每日剧单、YC 新剧、分销剧单、必做表。</p>
+      <label>App ID<input id="fsId" placeholder="cli_xxxxxxxx"/></label>
+      <label>App Secret<input id="fsSecret" type="password"/></label>
+    </details>
+    <div class="modal-actions">
+      <button id="btnTest" class="ghost">测试连接</button>
+      <div class="spacer"></div>
+      <button id="btnCancel" class="ghost">取消</button>
+      <button id="btnSave" class="primary">保存</button>
+    </div>
+    <p id="testMsg" class="tip"></p>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
