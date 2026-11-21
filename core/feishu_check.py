@@ -32,10 +32,6 @@ RESOURCES = [
     {"key": "yc_new", "name": "YC 一周新剧", "core": True, "kind": "bitable",
      "app": "Px5Ab0oIyaeVMYsgwaGceJPrn9f", "table": "tblPbjDnpw1e1C8V",
      "scope": "bitable:app:readonly"},
-    {"key": "dist", "name": "YC 短剧分销推广剧单", "core": True, "kind": "sheet",
-     "app": "RQU0sPdILhnQ2ctGKiFct2nyncG", "sheet": "NVudqH",
-     "sheet_name": "爆款上新", "range": "A1:I2",
-     "scope": "sheets:spreadsheet:readonly"},
     {"key": "todo", "name": "每日必做&推荐剧单", "core": True, "kind": "bitable",
      "app": "X2zHbte8baLRTCsPQjhcTy7xnYb", "table": "tblCqkdiEkFOBzmB",
      "scope": "bitable:app:readonly"},
@@ -209,23 +205,6 @@ class Client:
             total = data.get("has_more") and 1 or len(items)
         return {"rows": int(total or 0), "header": header[:8], "sample": len(items)}
 
-    def sheet_probe(self, token: str, sheet: str, rng: str,
-                    sheet_name: str = "") -> dict:
-        last = None
-        # 先按 sheet_id 读，失败再按工作表名读（两种写法平台都支持，取决于表）
-        for key in [x for x in (sheet, sheet_name) if x]:
-            path = "/sheets/v2/spreadsheets/%s/values/%s" % (
-                token, urllib.parse.quote("%s!%s" % (key, rng), safe=""))
-            try:
-                data = self.get(path)
-            except FeishuError as e:
-                last = e
-                continue
-            vals = ((data.get("valueRange") or {}).get("values")) or []
-            header = [str(x) for x in (vals[0] if vals else [])][:8]
-            return {"rows": max(0, len(vals) - 1), "header": header}
-        raise last or FeishuError(-1, "无法读取表格")
-
     def wiki_resolve(self, wiki_token: str, obj_type: str = "") -> str:
         data = self.get("/wiki/v2/spaces/get_node", {"token": wiki_token})
         node = data.get("node") or {}
@@ -237,22 +216,20 @@ class Client:
 
 def _probe(cli: Client, r: dict) -> dict:
     """探测单个资源，成功返回 {rows, header}，失败抛 FeishuError。"""
-    if r["kind"] == "bitable":
-        try:
-            return cli.bitable_probe(r["app"], r["table"])
-        except FeishuError as e:
-            # 每日剧单挂在知识库里：权限/定位问题可用 wiki 解析重试一次
-            if r.get("wiki") and e.code in (91403, 1254005, 131006, 10003, -1):
-                try:
-                    real = cli.wiki_resolve(r["wiki"])
-                except FeishuError:
-                    raise e
-                if real and real != r["app"]:
-                    got = cli.bitable_probe(real, r["table"])
-                    got["via"] = "wiki 解析"
-                    return got
-            raise
-    return cli.sheet_probe(r["app"], r["sheet"], r["range"], r.get("sheet_name", ""))
+    try:
+        return cli.bitable_probe(r["app"], r["table"])
+    except FeishuError as e:
+        # 每日剧单挂在知识库里：权限/定位问题可用 wiki 解析重试一次
+        if r.get("wiki") and e.code in (91403, 1254005, 131006, 10003, -1):
+            try:
+                real = cli.wiki_resolve(r["wiki"])
+            except FeishuError:
+                raise e
+            if real and real != r["app"]:
+                got = cli.bitable_probe(real, r["table"])
+                got["via"] = "wiki 解析"
+                return got
+        raise
 
 
 def enrich(it: dict, app_id: str) -> dict:
