@@ -255,21 +255,7 @@ def recommend(ctx, want_per_group: int = MAX_PER_GROUP) -> dict:
             "YourChannel", "yourchannel_drama",
             int(r.get("推广达人数") or 0) or None, str(r.get("上线时间") or "")[:10],
             ep=r.get("集数"))
-    # 4.4 分销剧单（有热度才收）
-    for r in fs.get("dist") or []:
-        heat = str(r.get("投放热度值") or "").replace(",", "")
-        try:
-            heat = int(float(heat))
-        except Exception:
-            heat = 0
-        if heat <= 0:
-            continue
-        add(r.get("剧名") or "", "分销热度", 0,
-            "热度%s｜%s" % (r.get("投放热度值"), r.get("短剧类型") or ""),
-            "YourChannel", "yourchannel_drama", None,
-            str(r.get("更新日期") or "")[:10], tags_hint=str(r.get("题材标签") or ""))
-
-    # 4.5 监控面板新剧（近 7 天，补冷门剧场）
+    # 4.4 监控面板新剧（近 7 天，补冷门剧场）
     mon = ctx.get("monitor") or {}
     for en, app in G.THEATERS:
         rows = mon.get(en) or []
@@ -277,7 +263,7 @@ def recommend(ctx, want_per_group: int = MAX_PER_GROUP) -> dict:
             if it["date"] >= _week_ago():
                 add(it["title"], "上新监控", 0, "", en, app, None, "20%s" % it["date"])
 
-    # 4.6 看板昨日/今日出单剧补充
+    # 4.5 看板昨日/今日出单剧补充
     for k, o in list(y_orders.items()) + list(t_orders.items()):
         row = next((r for r in dash.get("year_rank") or []
                     if G.n3(r.get("serial_name")) == k), None)
@@ -572,8 +558,6 @@ def _reason(r, ctx) -> str:
         parts.append("无素材")
     if c["notes"]:
         parts.append("备注：%s" % "；".join(c["notes"])[:60])
-    if c.get("tags_hint"):
-        parts.append("分销标签：%s" % c["tags_hint"][:40])
     tight = next((g for g in (ctx.get("groups") or []) if g["name"] == r["group"]), None)
     if tight:
         parts.append("该组 %d 主页/%d 集（%s 集/页）" %
