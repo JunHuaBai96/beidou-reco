@@ -25,7 +25,6 @@ FEISHU_TABLES = {
     "todo": ("X2zHbte8baLRTCsPQjhcTy7xnYb", "tblCqkdiEkFOBzmB"),    # 每日必做&推荐剧单
     "task": ("L2tNbbMUCa9UNjsB7wFcZ1IJnsd", "tblFKikt11z0KXml"),    # 短剧投放任务表（出单）
 }
-FEISHU_SHEET = ("RQU0sPdILhnQ2ctGKiFct2nyncG", "NVudqH", "A1:I2000")  # 分销推广剧单
 
 
 def _get(url: str, timeout: int = 30) -> str:
@@ -78,7 +77,7 @@ def fetch_monitor() -> dict:
 
 # ---------------- 飞书（可选） ----------------
 class Feishu:
-    """飞书四表 + 分销表（只读）。
+    """飞书四表（只读）。
 
     与 v1.0 的差别：失败不再被静默吞掉。``self.status`` 保留逐资源结论
     （ok / fail + 错误码 + 中文原因 + 修复动作 + 缺失 scope），
@@ -126,23 +125,8 @@ class Feishu:
             pt = data.get("page_token")
         return rows
 
-    def sheet(self) -> list:
-        token, sid, rng = FEISHU_SHEET
-        data = self._client().get(
-            "/sheets/v2/spreadsheets/%s/values/%s"
-            % (token, urllib.parse.quote("%s!%s" % (sid, rng))))
-        vals = ((data.get("valueRange") or {}).get("values")) or []
-        if not vals:
-            return []
-        head = [_flat(x) for x in vals[0]]
-        out = []
-        for v in vals[1:]:
-            out.append({head[i]: _flat(v[i]) if i < len(v) else ""
-                        for i in range(len(head))})
-        return out
-
     def all_tables(self) -> dict:
-        """拉四表 + 分销表；逐资源记状态，单张失败不影响其他表。"""
+        """拉四表；逐资源记状态，单张失败不影响其他表。"""
         if not self.enabled:
             return {}
         from . import feishu_check as FC
@@ -150,10 +134,7 @@ class Feishu:
         for r in FC.RESOURCES:
             st = time.time()
             try:
-                if r["kind"] == "bitable":
-                    rows = self.records(r["app"], r["table"])
-                else:
-                    rows = self.sheet()
+                rows = self.records(r["app"], r["table"])
                 out[r["key"]] = rows
                 self.status[r["key"]] = {
                     "key": r["key"], "name": r["name"], "core": r["core"],
