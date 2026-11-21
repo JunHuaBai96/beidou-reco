@@ -343,9 +343,4 @@ document.addEventListener("DOMContentLoaded", async () => {
     const r = await api.post("/api/recommend", { per_group: 3 });
     if (r.ok) renderReco(r);
   }
-
-});
-      } else { renderFsResult(state.lastFsCheck); }
-    }, 1600);
-  }
 });

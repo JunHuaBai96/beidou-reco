@@ -28,7 +28,7 @@ from core.mcp import DEFAULT_URL, Mcp, McpError
 from core.sources import Feishu
 
 APP_NAME = "北斗短剧素材推荐助手"
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 DEFAULT_PORT = 18765
 
 APP_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "BeidouReco")

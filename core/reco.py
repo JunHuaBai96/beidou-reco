@@ -375,13 +375,15 @@ def recommend(ctx, want_per_group: int = MAX_PER_GROUP) -> dict:
 
     # 优先级/理由
     for r in rows:
+        r["_sig"] = _signal(r, ctx)
         r["priority"] = _priority(r, ctx)
         r["reason"] = _reason(r, ctx)
 
-    # 排序：组紧张度 -> 优先级 -> 分数
+    # 排序：组紧张度 -> 优先级 -> 信号档（剧单＞看板＞个人） -> 分数
     pr = {"高": 0, "中": 1, "低": 2}
     tight = {g["name"]: (g["per_page"] if g["pages"] else 999) for g in groups}
-    rows.sort(key=lambda r: (tight.get(r["group"], 999), pr[r["priority"]], -r["_score"]))
+    rows.sort(key=lambda r: (tight.get(r["group"], 999), pr[r["priority"]],
+                             r.get("_sig", 3), -r["_score"]))
 
     summary = {
         "generated": ctx.get("generated"),
@@ -483,15 +485,34 @@ def _fits(c) -> dict:
     return f
 
 
-def _priority(r, ctx) -> str:
+def _signal(r, ctx) -> int:
+    """优先级信号（口径 v2，2026-11-21 定版）：
+    0=每日剧单排名高（含关注备注）＞ 1=看板前一日出单多 ＞ 2=个人出单多 ＞ 3=其他"""
     c = r["_c"]
     has_stock = any(x["eps"] > 0 for x in c.get("stock") or [])
     o = (c.get("orders") or {}).get("count") or 0
     y = (c.get("y_order") or {}).get("count") or 0
-    # 高：出单多且断料 / 昨日看板多单 / 剧单前 5 且没出过单
-    if (not has_stock and o >= 10) or y >= 2 or (c["rank"] and c["rank"] <= 5 and not o):
-        return "高"
-    if (not has_stock and o > 0) or (c["promoter"] or 0) > PROMO_HOT or c["type"] in ("新剧", "爆款"):
+    srcs = c.get("src") or []
+    daily_rank = c["rank"] if (c["rank"] and "每日剧单" in srcs) else 0
+    if (daily_rank and daily_rank <= 5) or (daily_rank and c.get("notes")):
+        return 0
+    if y >= 2:
+        return 1
+    if o >= 10 or (not has_stock and o > 0):
+        return 2
+    return 3
+
+
+SIG_TEXT = {0: "剧单排名高（关注备注）", 1: "看板前日出单多", 2: "个人出单多"}
+
+
+def _priority(r, ctx) -> str:
+    c = r["_c"]
+    sig = r["_sig"]
+    # 高：每日剧单排名高（关注备注）；中：看板前日出单多 / 个人出单多（及热门推广、新剧爆款）
+    if sig <= 2:
+        return "高" if sig == 0 else "中"
+    if (c["promoter"] or 0) > PROMO_HOT or c["type"] in ("新剧", "爆款"):
         return "中"
     return "低"
 
@@ -515,6 +536,8 @@ def _row(g, c, ctx) -> dict:
 def _reason(r, ctx) -> str:
     c = r["_c"]
     parts = []
+    if SIG_TEXT.get(r.get("_sig")):
+        parts.append(SIG_TEXT[r["_sig"]])
     if c.get("natural_group") == base_group(r["group"]):
         parts.append("归组 %s（题材对口）" % r["group"])
     elif c.get("moved"):
