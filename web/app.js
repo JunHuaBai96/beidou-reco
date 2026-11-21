@@ -1,6 +1,6 @@
 /* 北斗短剧素材推荐助手 · 前端逻辑（无框架） */
 const $ = (s) => document.querySelector(s);
-const state = { ctxReady: false, recoRows: [], assignRows: [], poll: null };
+const state = { ctxReady: false, recoRows: [], assignRows: [], poll: null, exited: false };
 
 const api = {
   async get(p, timeoutMs) { return req("GET", p, null, timeoutMs); },
@@ -216,7 +216,14 @@ function flash(msg) {
 }
 
 /* ---------- 设置 ---------- */
+function showQuitOverlay() {
+  $("#quitOverlay").classList.remove("hidden");
+  setPill("已退出", "idle");
+  showProgress(false);
+}
+function dead() { return state.exited; }
 function openModal() {
+  if (state.exited) return;
   $("#modal").classList.remove("hidden");
   if (state.lastFsCheck) renderFsResult(state.lastFsCheck);
 }
@@ -345,6 +352,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#btnSettings").onclick = openModal;
   $("#btnSetup").onclick = openModal;
   $("#btnCancel").onclick = closeModal;
+  // 退出程序：确认 → 通知服务端关停 → 显示已退出遮罩
+  $("#btnQuit").onclick = async () => {
+    if (state.exited) return;
+    if (!confirm("确定退出程序？\n本机服务将停止，未拉取完的数据会中断。")) return;
+    state.exited = true;
+    if (state.poll) { clearInterval(state.poll); state.poll = null; }
+    try { await api.post("/api/shutdown", {}); } catch (e) { /* 服务可能已先行退出 */ }
+    showQuitOverlay();
+  };
   // 取消/重置交互：Esc 或点击遮罩也能关闭，关闭不残留任何状态
   $("#modal").addEventListener("click", (e) => { if (e.target === $("#modal")) closeModal(); });
   document.addEventListener("keydown", (e) => {
@@ -354,6 +370,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#btnTest").onclick = testConn;
   $("#btnFsCheck").onclick = checkFeishu;
   $("#btnRefresh").onclick = async () => {
+    if (dead()) return;
     if (state.poll) { flash("正在拉取中，请稍候…"); return; }
     try {
       const r = await api.post("/api/refresh", {});
@@ -363,6 +380,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
   $("#btnRun").onclick = async () => {
     const btn = $("#btnRun");
+    if (dead()) return;
     if (btn.disabled) return;  // 防重入
     if (!state.ctxReady) {
       if (state.poll) { flash("正在拉取数据，完成后即可生成推荐"); return; }
@@ -385,6 +403,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
   $("#btnAssign").onclick = async () => {
     const btn = $("#btnAssign");
+    if (dead()) return;
     if (btn.disabled) return;  // 防重入
     const names = $("#names").value;
     if (!names.trim()) return alert("请先填写剧名");
