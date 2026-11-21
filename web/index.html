@@ -19,6 +19,7 @@
     <span id="fsPill" class="pill idle" title="飞书接入状态">飞书未配置</span>
     <span id="statusPill" class="pill idle">未连接</span>
     <button id="btnSettings" class="ghost">设置 API Key</button>
+    <button id="btnQuit" class="ghost" title="停止本机服务并退出程序">退出程序</button>
   </div>
 </header>
 
@@ -114,6 +115,14 @@
       <button id="btnSave" class="primary">保存</button>
     </div>
     <p id="testMsg" class="tip"></p>
+  </div>
+</div>
+
+<div id="quitOverlay" class="overlay hidden">
+  <div class="quit-card">
+    <h2>程序已退出</h2>
+    <p class="muted">本机服务已停止，此页面不再有数据。可以关闭这个浏览器标签页。</p>
+    <p class="muted tip">如需再次使用，请重新打开桌面上的 BeidouReco.exe。</p>
   </div>
 </div>
 
