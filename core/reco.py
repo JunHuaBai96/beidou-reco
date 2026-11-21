@@ -115,13 +115,21 @@ def build_context(mcp, feishu=None, log=print) -> dict:
 
     # 6) 飞书四表（可选）
     ctx["feishu"] = {}
+    ctx["feishu_status"] = {"configured": False, "ok": False, "ready": [],
+                            "blocked": [], "core_ok": 0, "core_total": 4,
+                            "items": [], "error": ""}
     if feishu is not None and getattr(feishu, "enabled", False):
         try:
             ctx["feishu"] = feishu.all_tables()
-            ctx["sources"]["飞书四表"] = "、".join(
-                "%s %d 行" % (k, len(v)) for k, v in ctx["feishu"].items())
+            ctx["feishu_status"] = feishu.status_summary()
+            fs = ctx["feishu_status"]
+            ctx["sources"]["飞书四表"] = "可接入 %d/%d" % (fs["core_ok"], fs["core_total"])
+            if fs.get("blocked"):
+                ctx["errors"].append("飞书未接入：" + "、".join(fs["blocked"]))
+                log("飞书未接入：%s" % "、".join(fs["blocked"]))
         except Exception as e:
             ctx["errors"].append("飞书：%s" % e)
+            log("飞书拉取失败：%s" % e)
     else:
         ctx["sources"]["飞书四表"] = "未配置（跳过）"
     return ctx
@@ -379,6 +387,7 @@ def recommend(ctx, want_per_group: int = MAX_PER_GROUP) -> dict:
         "generated": ctx.get("generated"),
         "sources": ctx.get("sources"),
         "errors": ctx.get("errors"),
+        "feishu": ctx.get("feishu_status"),
         "groups": [{"name": g["name"], "pages": g["pages"], "have": g["have"],
                     "eps": g["eps"], "per_page": g["per_page"]} for g in need],
         "stats": stat,

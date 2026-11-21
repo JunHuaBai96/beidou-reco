@@ -26,6 +26,8 @@ function logLine(s) {
 
 async function refreshStatus() {
   const s = await api.get("/api/status");
+  renderFsPill(s);
+  if (s.feishu_check) state.lastFsCheck = s.feishu_check;
   const masked = s.cfg && s.cfg.masked;
   if (!masked) { $("#setupBanner").classList.remove("hidden"); setPill("未配置", "bad"); }
   else { $("#setupBanner").classList.add("hidden"); setPill("已配置 " + masked, "ok"); }
@@ -87,6 +89,8 @@ function renderReco(data) {
   $("#recoMeta").innerHTML =
     `数据时间 ${esc(s.generated || "")}；数据源：${Object.entries(s.sources || {}).map(([k, v]) => `${esc(k)} ${esc(v)}`).join(" · ")}` +
     (d.yesterday ? `<br/>看板昨日 ${esc(d.yesterday.date)}：${d.yesterday.order_count} 单 ¥${d.yesterday.amount}；今日：${d.today?.order_count ?? "-"} 单 ¥${d.today?.amount ?? "-"}` : "") +
+    (s.feishu && s.feishu.configured && (s.feishu.core_ok || 0) < (s.feishu.core_total || 4)
+      ? `<br/><span style="color:var(--warn)">飞书接入 ${s.feishu.core_ok}/${s.feishu.core_total}，未接入：${esc((s.feishu.blocked || []).join("、"))}（这些源未参与加权，建议去设置里检测修复）</span>` : "") +
     (s.errors && s.errors.length ? `<br/><span style="color:var(--warn)">注意：${esc(s.errors.join("；"))}</span>` : "");
 
   const t = $("#tblReco");
@@ -172,11 +176,24 @@ function flash(msg) {
 /* ---------- 设置 ---------- */
 function openModal() {
   $("#modal").classList.remove("hidden");
+  if (state.lastFsCheck) renderFsResult(state.lastFsCheck);
 }
 async function saveSettings() {
-  const body = { api_key: $("#apiKey").value.trim(), feishu_app_id: $("#fsId").value.trim(), feishu_app_secret: $("#fsSecret").value.trim() };
+  // 留空 = 不修改（避免把已保存的 Key / Secret 清掉）
+  const body = { feishu_app_id: $("#fsId").value.trim() };
+  const key = $("#apiKey").value.trim();
+  if (key) body.api_key = key;
+  const sec = $("#fsSecret").value.trim();
+  if (sec) body.feishu_app_secret = sec;
   const r = await api.post("/api/settings", body);
-  if (r.ok) { $("#modal").classList.add("hidden"); refreshStatus(); }
+  if (r.ok) {
+    $("#fsSecret").value = "";
+    if (r.feishu_configured) $("#fsSecret").placeholder = "已保存，留空则不修改";
+    state.lastFsCheck = null;
+    $("#fsResult").classList.add("hidden");
+    $("#modal").classList.add("hidden");
+    refreshStatus();
+  }
 }
 async function testConn() {
   $("#testMsg").textContent = "测试中…";
@@ -184,16 +201,103 @@ async function testConn() {
   $("#testMsg").textContent = r.ok ? `连接成功：${r.groups} 个发布组${r.user ? "，账号 " + r.user : ""}` : "失败：" + r.error;
 }
 
+/* ---------- 飞书接入检测 ---------- */
+async function checkFeishu() {
+  const btn = $("#btnFsCheck");
+  const box = $("#fsResult");
+  const appId = $("#fsId").value.trim();
+  const secret = $("#fsSecret").value.trim();
+  box.classList.remove("hidden");
+  box.innerHTML = `<p class="muted">正在逐个探测四类资源……</p>`;
+  btn.disabled = true; btn.textContent = "检测中…";
+  try {
+    const r = await api.post("/api/feishu-check", { app_id: appId, app_secret: secret });
+    state.lastFsCheck = r;
+    renderFsResult(r);
+    refreshStatus();
+  } catch (e) {
+    box.innerHTML = `<p class="fs-bad">检测请求失败：${esc(e.message || e)}</p>`;
+  }
+  btn.disabled = false; btn.textContent = "检测接入能力";
+}
+
+function fsTag(st) {
+  if (st === "ok") return `<span class="fs-ok">可接入</span>`;
+  if (st === "skip") return `<span class="fs-skip">未检测</span>`;
+  return `<span class="fs-bad">不可接入</span>`;
+}
+
+function renderFsResult(r) {
+  const box = $("#fsResult");
+  box.classList.remove("hidden");
+  if (!r || !r.configured) {
+    box.innerHTML = `<p class="fs-warn">还没填写 App ID / Secret，无从检测。</p>` +
+      ((r && r.notes) || []).map(n => `<p class="fs-warn">· ${esc(n)}</p>`).join("");
+    return;
+  }
+  const coreOk = r.core_ok || 0, coreAll = r.core_total || 4;
+  const good = !!r.ok;
+  const head = `<div class="fs-head ${good ? "ok" : "bad"}">
+      <strong>${good ? "四类资源全部可接入" : "核心资源可接入 " + coreOk + "/" + coreAll}</strong>
+      <span>耗时 ${r.elapsed_ms || 0} ms${r.app ? " · 应用 " + esc(r.app) : ""}</span>
+    </div>`;
+  const notes = (r.notes || []).length
+    ? `<ul class="fs-notes">${r.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : "";
+  const rows = (r.items || []).map(it => `<tr>
+      <td>${esc(it.name)}${it.core ? "" : `<div class="muted">附加</div>`}</td>
+      <td>${fsTag(it.status)}</td>
+      <td>${it.status === "ok"
+        ? `<span class="muted">${it.rows ? it.rows + " 行" : "已连通"}${it.note ? "（" + esc(it.note) + "）" : ""}</span>`
+        : `<div class="fs-reason">${esc(it.reason || "失败")}</div>${it.code ? `<div class="muted">code ${it.code}</div>` : ""}`}</td>
+      <td>${(it.need || []).map(x => `<code>${esc(x)}</code>`).join(" ") || `<span class="muted">—</span>`}</td>
+      <td class="fs-fix">${(it.fix || []).map(x => esc(x)).join("<br/>") || `<span class="muted">—</span>`}${
+        it.link ? `<br/><a class="fs-link" href="${esc(it.link)}" target="_blank" rel="noreferrer">一键申请权限 →</a>` : ""}</td>
+    </tr>`).join("");
+  const blocked = (r.blocked || []).filter(Boolean);
+  const blockLine = blocked.length
+    ? `<p class="fs-warn"><strong>因权限/配置不足暂不能发布的项目：</strong>${blocked.map(esc).join("、")}</p>`
+    : (r.ok ? `<p class="fs-ok-line">四类资源均可用，飞书数据已参与推荐加权。</p>`
+            : `<p class="fs-warn">尚未完成检测：请先修正上面的凭证格式问题再点一次。</p>`);
+  box.innerHTML = head + notes +
+    `<div class="fs-tablewrap"><table class="fs-table"><thead><tr>
+       <th>资源</th><th>状态</th><th>结论 / 失败原因</th><th>缺失权限</th><th>修复动作</th>
+     </tr></thead><tbody>${rows}</tbody></table></div>` + blockLine;
+}
+
+function renderFsPill(st) {
+  const el = $("#fsPill");
+  if (!el) return;
+  const cfg = st.cfg && st.cfg.feishu;
+  const ck = st.feishu_check || (st.summary && st.summary.feishu) || st.feishu_status;
+  if (!cfg) {
+    el.className = "pill idle"; el.textContent = "飞书未配置";
+    el.title = "未填写 App ID / Secret，按 MCP+看板+监控三源运行";
+    return;
+  }
+  if (!ck || !ck.items || !ck.items.length) {
+    el.className = "pill run"; el.textContent = "飞书待检测";
+    el.title = "进设置点「检测接入能力」";
+    return;
+  }
+  const okN = ck.core_ok || 0, all = ck.core_total || 4;
+  el.className = "pill " + (okN === all ? "ok" : "bad");
+  el.textContent = `飞书 ${okN}/${all}`;
+  el.title = (ck.blocked || []).join("、") || "全部可接入";
+}
+
 /* ---------- 事件 ---------- */
 document.addEventListener("DOMContentLoaded", async () => {
   const st = await api.get("/api/status");
   if (st.cfg?.masked) $("#apiKey").placeholder = st.cfg.masked;
+  if (st.cfg?.feishu_app_id) $("#fsId").value = st.cfg.feishu_app_id;
+  if (st.cfg?.feishu) $("#fsSecret").placeholder = "已保存，留空则不修改";
 
   $("#btnSettings").onclick = openModal;
   $("#btnSetup").onclick = openModal;
   $("#btnCancel").onclick = () => $("#modal").classList.add("hidden");
   $("#btnSave").onclick = saveSettings;
   $("#btnTest").onclick = testConn;
+  $("#btnFsCheck").onclick = checkFeishu;
   $("#btnRefresh").onclick = async () => {
     const r = await api.post("/api/refresh", {});
     if (r.ok) { showProgress(true); $("#log").textContent = "开始拉取…"; setPill("拉取中…", "run"); refreshStatus(); }
@@ -228,5 +332,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (state.ctxReady) {
     const r = await api.post("/api/recommend", { per_group: 3 });
     if (r.ok) renderReco(r);
+  }
+
+});
+      } else { renderFsResult(state.lastFsCheck); }
+    }, 1600);
   }
 });

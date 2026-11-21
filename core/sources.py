@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import urllib.parse
 import urllib.request
 
@@ -77,51 +78,44 @@ def fetch_monitor() -> dict:
 
 # ---------------- 飞书（可选） ----------------
 class Feishu:
+    """飞书四表 + 分销表（只读）。
+
+    与 v1.0 的差别：失败不再被静默吞掉。``self.status`` 保留逐资源结论
+    （ok / fail + 错误码 + 中文原因 + 修复动作 + 缺失 scope），
+    供界面与推荐理由如实标注数据源降级。
+    """
+
     def __init__(self, app_id: str = "", app_secret: str = ""):
         self.app_id = (app_id or "").strip()
         self.app_secret = (app_secret or "").strip()
-        self._token = None
+        self._cli = None
         self.error = ""
+        self.status = {}
+        self.last_check = None
 
     @property
     def enabled(self) -> bool:
         return bool(self.app_id and self.app_secret)
 
+    def _client(self):
+        from . import feishu_check as FC
+        if self._cli is None:
+            self._cli = FC.Client(self.app_id, self.app_secret)
+        return self._cli
+
     def token(self) -> str:
-        if self._token:
-            return self._token
-        body = json.dumps({"app_id": self.app_id,
-                           "app_secret": self.app_secret}).encode()
-        req = urllib.request.Request(
-            "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
-            data=body, method="POST",
-            headers={"Content-Type": "application/json; charset=utf-8"})
-        with urllib.request.urlopen(req, timeout=20) as r:
-            d = json.loads(r.read().decode())
-        if d.get("code") != 0:
-            raise RuntimeError("飞书鉴权失败：%s" % d.get("msg"))
-        self._token = d["tenant_access_token"]
-        return self._token
+        return self._client().token()
 
-    def _api(self, path: str, params: dict | None = None) -> dict:
-        url = "https://open.feishu.cn/open-apis" + path
-        if params:
-            url += "?" + urllib.parse.urlencode(params)
-        req = urllib.request.Request(
-            url, headers={"Authorization": "Bearer " + self.token()})
-        with urllib.request.urlopen(req, timeout=30) as r:
-            d = json.loads(r.read().decode())
-        if d.get("code") != 0:
-            raise RuntimeError("飞书接口 %s 失败：%s" % (path, d.get("msg")))
-        return d.get("data") or {}
-
+    # ---- 全量读取 ----
     def records(self, app_token: str, table_id: str) -> list:
+        cli = self._client()
         rows, pt = [], None
         while True:
             p = {"page_size": 500}
             if pt:
                 p["page_token"] = pt
-            data = self._api("/bitable/v1/apps/%s/tables/%s/records" % (app_token, table_id), p)
+            data = cli.get(
+                "/bitable/v1/apps/%s/tables/%s/records" % (app_token, table_id), p)
             for it in data.get("items") or []:
                 f = it.get("fields") or {}
                 row = {k: _flat(v) for k, v in f.items()}
@@ -134,8 +128,9 @@ class Feishu:
 
     def sheet(self) -> list:
         token, sid, rng = FEISHU_SHEET
-        data = self._api("/sheets/v2/spreadsheets/%s/values/%s"
-                         % (token, urllib.parse.quote("%s!%s" % (sid, rng))))
+        data = self._client().get(
+            "/sheets/v2/spreadsheets/%s/values/%s"
+            % (token, urllib.parse.quote("%s!%s" % (sid, rng))))
         vals = ((data.get("valueRange") or {}).get("values")) or []
         if not vals:
             return []
@@ -147,21 +142,74 @@ class Feishu:
         return out
 
     def all_tables(self) -> dict:
+        """拉四表 + 分销表；逐资源记状态，单张失败不影响其他表。"""
         if not self.enabled:
             return {}
-        out = {}
-        for key, (app, tbl) in FEISHU_TABLES.items():
+        from . import feishu_check as FC
+        out, self.error = {}, ""
+        for r in FC.RESOURCES:
+            st = time.time()
             try:
-                out[key] = self.records(app, tbl)
+                if r["kind"] == "bitable":
+                    rows = self.records(r["app"], r["table"])
+                else:
+                    rows = self.sheet()
+                out[r["key"]] = rows
+                self.status[r["key"]] = {
+                    "key": r["key"], "name": r["name"], "core": r["core"],
+                    "status": "ok", "code": 0, "msg": "", "category": "",
+                    "reason": "", "fix": [], "need": [], "rows": len(rows),
+                    "ms": int((time.time() - st) * 1000),
+                }
+            except FC.FeishuError as e:
+                info = FC.explain(e.code, e.msg)
+                out[r["key"]] = []
+                st_item = FC.enrich({
+                    "key": r["key"], "name": r["name"], "core": r["core"],
+                    "status": "fail", "code": e.code, "msg": e.msg,
+                    "category": info["category"], "reason": info["reason"],
+                    "fix": info["fix"], "link": info.get("link", ""),
+                    "need": [r["scope"]] if r.get("scope") else [],
+                    "rows": 0, "ms": int((time.time() - st) * 1000),
+                }, self.app_id)
+                self.status[r["key"]] = st_item
+                self.error = (self.error + "；" if self.error else "") + \
+                    "%s：%s" % (r["name"], info["reason"])
             except Exception as e:
-                self.error = "%s: %s" % (key, e)
-                out[key] = []
-        try:
-            out["dist"] = self.sheet()
-        except Exception as e:
-            self.error = "%s: %s" % (self.error, e)
-            out["dist"] = []
+                out[r["key"]] = []
+                self.status[r["key"]] = {
+                    "key": r["key"], "name": r["name"], "core": r["core"],
+                    "status": "fail", "code": -1, "msg": str(e),
+                    "category": "unknown", "reason": "异常：%s" % e,
+                    "fix": ["把该信息发我"], "need": [], "rows": 0,
+                    "ms": int((time.time() - st) * 1000),
+                }
         return out
+
+    def status_summary(self) -> dict:
+        """给上下文/界面用的轻量摘要。"""
+        items = list(self.status.values())
+        if not items:
+            return {"ok": False, "configured": self.enabled, "ready": [],
+                    "blocked": [], "core_ok": 0, "core_total": 4, "items": []}
+        core = [x for x in items if x.get("core")]
+        return {
+            "ok": all(x["status"] == "ok" for x in core) and not
+                  [x for x in items if x["status"] != "ok"],
+            "configured": True,
+            "ready": [x["name"] for x in items if x["status"] == "ok"],
+            "blocked": [x["name"] for x in items if x["status"] != "ok"],
+            "core_ok": len([x for x in core if x["status"] == "ok"]),
+            "core_total": len(core),
+            "error": self.error,
+            "items": items,
+        }
+
+    def check(self) -> dict:
+        """完整接入检测（发请求，逐资源探测）。"""
+        from . import feishu_check as FC
+        self.last_check = FC.check(self.app_id, self.app_secret)
+        return self.last_check
 
 
 def _flat(v):

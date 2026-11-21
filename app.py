@@ -28,7 +28,7 @@ from core.mcp import DEFAULT_URL, Mcp, McpError
 from core.sources import Feishu
 
 APP_NAME = "北斗短剧素材推荐助手"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 DEFAULT_PORT = 18765
 
 APP_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "BeidouReco")
@@ -69,6 +69,7 @@ class State:
         self.ctx_at = 0.0
         self.lock = threading.Lock()
         self.job = {"state": "idle", "log": [], "error": "", "started": 0}
+        self.feishu_check = None      # 最近一次接入检测结果（内存）
 
     def mcp(self, force_key: str = "") -> Mcp:
         key = force_key or self.cfg.get("api_key") or ""
@@ -181,6 +182,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(self._settings(self._body()))
             elif p == "/api/test":
                 self._json(self._test(self._body()))
+            elif p == "/api/feishu-check":
+                self._json(self._feishu_check(self._body()))
             elif p == "/api/refresh":
                 self._json(self._refresh())
             elif p == "/api/recommend":
@@ -199,11 +202,38 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- 业务 ----
     def _settings(self, body: dict) -> dict:
+        changed_fs = False
         for k in ("api_key", "feishu_app_id", "feishu_app_secret"):
             if k in body:
-                S.cfg[k] = (body.get(k) or "").strip()
+                new = (body.get(k) or "").strip()
+                if k.startswith("feishu_") and new != S.cfg.get(k):
+                    changed_fs = True
+                S.cfg[k] = new
         save_config(S.cfg)
-        return {"ok": True, "masked": mask_key(S.cfg.get("api_key", ""))}
+        if changed_fs:
+            S.feishu_check = None       # 凭证变了，旧检测结果作废
+        return {"ok": True, "masked": mask_key(S.cfg.get("api_key", "")),
+                "feishu_configured": bool(S.cfg.get("feishu_app_id")
+                                          and S.cfg.get("feishu_app_secret"))}
+
+    def _feishu_check(self, body: dict) -> dict:
+        """飞书接入能力检测：逐资源探测四表 + 分销表，输出可接入状态。"""
+        from core import feishu_check as FC
+        app_id = (body.get("app_id") or S.cfg.get("feishu_app_id") or "").strip()
+        secret = (body.get("app_secret") or S.cfg.get("feishu_app_secret") or "").strip()
+        if not (app_id and secret):
+            res = {"ok": False, "configured": False, "app": "",
+                   "token_ok": False, "items": [], "ready": [], "blocked": [],
+                   "core_ok": 0, "core_total": len([r for r in FC.RESOURCES if r["core"]]),
+                   "notes": ["还没填写飞书 App ID / Secret"], "elapsed_ms": 0}
+            S.feishu_check = res
+            return res
+        res = FC.check(app_id, secret)
+        res["configured"] = True
+        S.feishu_check = res
+        S.job["log"].append("[飞书检测] " + FC.summary_line(res))
+        del S.job["log"][:-400]
+        return res
 
     def _test(self, body: dict) -> dict:
         key = (body.get("api_key") or S.cfg.get("api_key") or "").strip()
@@ -251,9 +281,12 @@ class Handler(BaseHTTPRequestHandler):
         out["ctx_age"] = int(time.time() - S.ctx_at) if S.ctx_at else None
         out["cfg"] = {"masked": mask_key(S.cfg.get("api_key", "")),
                       "feishu": bool(S.cfg.get("feishu_app_id") and S.cfg.get("feishu_app_secret")),
+                      "feishu_app_id": S.cfg.get("feishu_app_id", ""),
                       "mcp_url": S.cfg.get("mcp_url") or DEFAULT_URL}
+        out["feishu_check"] = S.feishu_check
         if S.ctx:
             out["summary"] = _summary(S.ctx)
+            out["feishu_status"] = S.ctx.get("feishu_status")
         return out
 
     def _context_payload(self) -> dict:
@@ -321,7 +354,8 @@ def _summary(ctx: dict) -> dict:
                        "have": g.get("have"), "eps": g.get("eps"),
                        "per_page": g.get("per_page")})
     return {"generated": ctx.get("generated"), "sources": ctx.get("sources"),
-            "errors": ctx.get("errors"), "groups": groups}
+            "errors": ctx.get("errors"), "groups": groups,
+            "feishu": ctx.get("feishu_status")}
 
 
 # ---------------------------------------------------------------- 启动
@@ -388,11 +422,33 @@ def selftest() -> int:
     return 0 if report["ok"] else 1
 
 
+def feishu_selftest() -> int:
+    """只跑飞书接入检测（不拉 MCP），输出 feishu_report.json。"""
+    fs = S.feishu()
+    rep = {"app": APP_NAME, "version": VERSION,
+           "configured": fs.enabled,
+           "checked_at": time.strftime("%Y-%m-%d %H:%M:%S")}
+    if not fs.enabled:
+        rep["ok"] = False
+        rep["notes"] = ["未配置飞书 App ID / Secret（设置里填写后再跑）"]
+    else:
+        res = fs.check()
+        rep.update(res)
+        rep["ok"] = bool(res.get("ok"))
+    out = os.path.join(os.getcwd(), "feishu_report.json")
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(rep, f, ensure_ascii=False, indent=2)
+    print("feishu selftest -> %s ok=%s 可接入 %s/%s"
+          % (out, rep["ok"], rep.get("core_ok"), rep.get("core_total")), flush=True)
+    return 0 if rep["ok"] else 1
+
+
 def main():
     ap = argparse.ArgumentParser(description=APP_NAME)
     ap.add_argument("--port", type=int, default=None)
     ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--feishu-selftest", action="store_true")
     ap.add_argument("--version", action="store_true")
     a = ap.parse_args()
     if a.version:
@@ -402,6 +458,8 @@ def main():
         S.load_cache()
     except Exception:
         pass
+    if a.feishu_selftest:
+        sys.exit(feishu_selftest())
     if a.selftest:
         sys.exit(selftest())
     port = a.port or int(S.cfg.get("port") or DEFAULT_PORT)

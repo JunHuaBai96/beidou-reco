@@ -90,7 +90,7 @@ textarea{width:100%;background:var(--panel);border:1px solid var(--line);border-
   color:var(--text);padding:12px;font:13px/1.6 Consolas,"Microsoft YaHei",monospace;resize:vertical}
 .foot{margin-top:22px;line-height:1.8}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:grid;place-items:center;z-index:50}
-.modal-card{width:min(560px,92vw);background:var(--panel);border:1px solid var(--line);
+.modal-card{width:min(760px,94vw);max-height:92vh;overflow:auto;background:var(--panel);border:1px solid var(--line);
   border-radius:14px;padding:22px}
 .modal label{display:block;margin:12px 0;font-size:13px;color:#cbd3df}
 .modal input{width:100%;margin-top:6px;background:#0f1218;border:1px solid var(--line);
@@ -102,3 +102,33 @@ details{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px}
 summary{cursor:pointer;color:#9db7e6;font-size:13px}
 .hidden{display:none!important}
 .empty{padding:26px;text-align:center;color:var(--muted)}
+
+/* ---------- 飞书接入检测 ---------- */
+.fs-result{margin-top:10px;border-top:1px dashed var(--line);padding-top:10px}
+.fs-head{display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:8px 10px;border-radius:8px;font-size:13px;margin-bottom:8px}
+.fs-head.ok{background:rgba(51,195,125,.1);border:1px solid rgba(51,195,125,.35);color:#8fe3b8}
+.fs-head.bad{background:rgba(255,95,109,.09);border:1px solid rgba(255,95,109,.35);color:#ff9aa4}
+.fs-head span{color:var(--muted);font-size:11.5px}
+.fs-notes{margin:0 0 8px;padding-left:18px;color:var(--warn);font-size:12px;line-height:1.7}
+.fs-tablewrap{overflow:auto;border:1px solid var(--line);border-radius:8px}
+table.fs-table{min-width:660px;width:100%;table-layout:auto}
+table.fs-table th{font-size:11.5px;padding:7px 8px;background:#141920}
+table.fs-table td{font-size:11.8px;padding:7px 8px;line-height:1.55}
+table.fs-table td.fs-fix{color:#b8c4d6;min-width:190px;font-size:11.5px}
+table.fs-table code{word-break:break-all;display:inline-block;max-width:130px;line-height:1.4}
+table.fs-table td:first-child{min-width:96px}
+.fs-ok{color:var(--ok);border:1px solid rgba(51,195,125,.45);background:rgba(51,195,125,.1);
+  padding:1px 7px;border-radius:10px;font-size:11px;white-space:nowrap}
+.fs-bad{color:var(--danger);border:1px solid rgba(255,95,109,.45);background:rgba(255,95,109,.1);
+  padding:1px 7px;border-radius:10px;font-size:11px;white-space:nowrap}
+.fs-skip{color:var(--muted);border:1px solid var(--line);padding:1px 7px;border-radius:10px;font-size:11px}
+.fs-warn{color:var(--warn);font-size:12px;line-height:1.7;margin:8px 0 0}
+.fs-ok-line{color:var(--ok);font-size:12px;margin:8px 0 0}
+
+.fs-link{color:#7fb0ff;font-size:11.5px;text-decoration:none;border-bottom:1px dashed rgba(127,176,255,.5)}
+.fs-link:hover{color:#a8c8ff}
+
+.fs-reason{color:var(--danger);line-height:1.5;max-width:250px;word-break:break-all}
+table.fs-table td:nth-child(3){max-width:260px}
+table.fs-table td:nth-child(4){max-width:120px}
