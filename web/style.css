@@ -22,6 +22,7 @@ code{background:#0b0d11;padding:1px 5px;border-radius:4px;font-size:12px}
 .pill.ok{color:var(--ok);border-color:rgba(51,195,125,.4);background:rgba(51,195,125,.08)}
 .pill.bad{color:var(--danger);border-color:rgba(255,95,109,.4);background:rgba(255,95,109,.08)}
 .pill.run{color:var(--warn);border-color:rgba(245,166,35,.4);background:rgba(245,166,35,.08)}
+.pill.warn{color:var(--warn);border-color:rgba(245,166,35,.4);background:rgba(245,166,35,.08);cursor:help}
 main{max-width:1500px;margin:0 auto;padding:18px 22px 60px}
 button{cursor:pointer;border-radius:8px;border:1px solid var(--line);
   background:var(--panel2);color:var(--text);padding:8px 14px;font-size:13px}

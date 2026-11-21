@@ -30,7 +30,17 @@ async function refreshStatus() {
   if (s.feishu_check) state.lastFsCheck = s.feishu_check;
   const masked = s.cfg && s.cfg.masked;
   if (!masked) { $("#setupBanner").classList.remove("hidden"); setPill("未配置", "bad"); }
-  else { $("#setupBanner").classList.add("hidden"); setPill("已配置 " + masked, "ok"); }
+  else {
+    $("#setupBanner").classList.add("hidden");
+    const legacy = s.cfg.key_is_legacy ? "（旧版配置）" : "";
+    setPill("已配置 " + masked + legacy, legacy ? "warn" : "ok");
+    const pill = $("#statusPill");
+    pill.title = "北斗 Key 绑定版本：" + (s.cfg.key_bound_version || "未知")
+      + "\n当前程序版本见左上角；旧版配置仍可用，重新保存 Key 即更新绑定版本";
+  }
+  fetch("/api/health").then(r => r.json()).then(h => {
+    if (h && h.version) $("#verTag").textContent = "v" + h.version;
+  }).catch(() => {});
   if (s.has_ctx && s.ctx_age != null) {
     state.ctxReady = true;
     $("#ctxInfo").textContent = "数据：" + (s.summary?.generated || "已加载") + "（" + Math.round(s.ctx_age / 60) + " 分钟前）";

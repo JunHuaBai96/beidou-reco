@@ -28,7 +28,7 @@ from core.mcp import DEFAULT_URL, Mcp, McpError
 from core.sources import Feishu
 
 APP_NAME = "北斗短剧素材推荐助手"
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 DEFAULT_PORT = 18765
 
 APP_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "BeidouReco")
@@ -44,7 +44,7 @@ def res_dir() -> str:
 # ---------------------------------------------------------------- 配置
 def load_config() -> dict:
     cfg = {"api_key": "", "feishu_app_id": "", "feishu_app_secret": "",
-           "mcp_url": DEFAULT_URL, "port": DEFAULT_PORT}
+           "mcp_url": DEFAULT_URL, "port": DEFAULT_PORT, "saved_by_version": ""}
     try:
         cfg.update(json.load(open(CONFIG_PATH, encoding="utf-8")))
     except Exception:
@@ -57,8 +57,23 @@ def load_config() -> dict:
 def save_config(cfg: dict):
     keep = {k: cfg.get(k, "") for k in
             ("api_key", "feishu_app_id", "feishu_app_secret", "mcp_url", "port")}
+    keep["saved_by_version"] = VERSION  # Key 绑定时的程序版本，用于判断是否沿用旧状态
     json.dump(keep, open(CONFIG_PATH, "w", encoding="utf-8"),
               ensure_ascii=False, indent=2)
+
+
+def reset_state() -> int:
+    """清空本机持久化状态（config.json + cache.json），用于干净验证或换 Key 重绑。"""
+    removed = []
+    for p in (CONFIG_PATH, CACHE_PATH):
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+                removed.append(p)
+        except Exception as e:
+            print("无法删除 %s: %s" % (p, e), flush=True)
+    print("已清空本机状态：%s" % ("、".join(removed) if removed else "（本来就没有）"), flush=True)
+    return 0
 
 
 # ---------------------------------------------------------------- 状态
@@ -115,7 +130,7 @@ S = State()
 
 # ---------------------------------------------------------------- HTTP
 class Handler(BaseHTTPRequestHandler):
-    server_version = "BeidouReco/1.0"
+    server_version = "BeidouReco/" + VERSION
 
     def log_message(self, fmt, *args):  # 静音
         try:
@@ -171,7 +186,10 @@ class Handler(BaseHTTPRequestHandler):
         elif p == "/api/context":
             self._json(self._context_payload())
         elif p == "/api/health":
-            self._json({"ok": True, "version": VERSION})
+            self._json({"ok": True, "version": VERSION,
+                        "config_version": S.cfg.get("saved_by_version") or "",
+                        "config_legacy": bool(S.cfg.get("api_key") and not S.cfg.get("saved_by_version")),
+                        "config_path": CONFIG_PATH})
         else:
             self._send(404, b"not found", "text/plain; charset=utf-8")
 
@@ -282,7 +300,10 @@ class Handler(BaseHTTPRequestHandler):
         out["cfg"] = {"masked": mask_key(S.cfg.get("api_key", "")),
                       "feishu": bool(S.cfg.get("feishu_app_id") and S.cfg.get("feishu_app_secret")),
                       "feishu_app_id": S.cfg.get("feishu_app_id", ""),
-                      "mcp_url": S.cfg.get("mcp_url") or DEFAULT_URL}
+                      "mcp_url": S.cfg.get("mcp_url") or DEFAULT_URL,
+                      "key_bound_version": ((S.cfg.get("saved_by_version") or "≤1.1.0（旧版写入）")
+                                            if S.cfg.get("api_key") else ""),
+                      "key_is_legacy": bool(S.cfg.get("api_key") and not S.cfg.get("saved_by_version"))}
         out["feishu_check"] = S.feishu_check
         if S.ctx:
             out["summary"] = _summary(S.ctx)
@@ -450,10 +471,14 @@ def main():
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--feishu-selftest", action="store_true")
     ap.add_argument("--version", action="store_true")
+    ap.add_argument("--reset-state", action="store_true",
+                    help="清空本机配置与缓存（%APPDATA%\\BeidouReco），用于干净验证或换 Key 重绑")
     a = ap.parse_args()
     if a.version:
         print(VERSION)
         return
+    if a.reset_state:
+        sys.exit(reset_state())
     try:
         S.load_cache()
     except Exception:

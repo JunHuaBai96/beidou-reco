@@ -91,6 +91,21 @@ web/               前端（原生 HTML/JS/CSS，暗色主题）
 assets/            剧目题材库（genre_map / worldview_map）
 ```
 
+## v1.1.1 更新（版本状态修复）
+
+- **版本号单一来源**：页面版本改为启动时从 `/api/health` 动态渲染，不再在 HTML 里硬编码，
+  彻底避免「exe 是新版、页面显示旧版」的错位。
+- **Key 绑定版本可追溯**：`config.json` 新增 `saved_by_version`，状态栏悬停可看到北斗 Key
+  绑定于哪个版本；旧版（≤1.1.0）写入的配置会显示「已配置 …（旧版配置）」黄标，重新保存
+  Key 即更新绑定版本（Key 本身仍有效，无需重填）。
+- `/api/health` 现返回 `version`、`config_version`、`config_legacy`、`config_path`。
+- 新增 `BeidouReco.exe --reset-state`：一键清空 `%APPDATA%\BeidouReco` 下的 config.json 与
+  cache.json，用于干净验证或换 Key 重绑。
+- 修复 Server 响应头版本硬编码（`BeidouReco/1.0` → 跟随实际 VERSION）。
+
+> 如果你打开的 exe 显示 v1.0.0：那是仓库里 v1.0.0 Release 的旧安装包或本地旧下载文件，
+> 与本机状态无关。请删除旧文件，从 [Latest Release](../../releases/latest) 重新下载。
+
 ## v1.1.0 更新
 
 - **新增飞书接入能力检测**：逐资源输出可接入状态、失败原因、缺失权限、修复动作、
