@@ -3,12 +3,33 @@ const $ = (s) => document.querySelector(s);
 const state = { ctxReady: false, recoRows: [], assignRows: [], poll: null };
 
 const api = {
-  async get(p) { const r = await fetch(p); return r.json(); },
-  async post(p, b) {
-    const r = await fetch(p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b || {}) });
-    return r.json();
-  },
+  async get(p, timeoutMs) { return req("GET", p, null, timeoutMs); },
+  async post(p, b, timeoutMs) { return req("POST", p, b, timeoutMs); },
 };
+
+/* 统一请求：超时保护 + 非 JSON 响应明确报错（否则按钮会卡在「生成中…」） */
+async function req(method, p, body, timeoutMs) {
+  const hasBody = body !== undefined && body !== null;
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeoutMs || 90000);
+  try {
+    const r = await fetch(p, {
+      method,
+      headers: hasBody ? { "Content-Type": "application/json" } : undefined,
+      body: hasBody ? JSON.stringify(body) : undefined,
+      signal: ctl.signal,
+    });
+    const txt = await r.text();
+    let data;
+    try { data = JSON.parse(txt); }
+    catch (e) { throw new Error("服务返回异常（HTTP " + r.status + "）：" + txt.slice(0, 120)); }
+    return data;
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error("请求超时，请重试");
+    if (e instanceof TypeError) throw new Error("无法连接本机服务（可能已退出），请重新启动程序");
+    throw e;
+  } finally { clearTimeout(t); }
+}
 
 /* ---------- 状态 ---------- */
 function setPill(text, cls) {
@@ -56,13 +77,24 @@ async function refreshStatus() {
       $("#log").textContent = "";
       (st.log || []).forEach(logLine);
       setBar(Math.min(95, 10 + (st.log || []).length * 3));
-      if (st.state !== "running") {
+        if (st.state !== "running") {
         clearInterval(state.poll); state.poll = null;
         setBar(100);
         if (st.state === "done") { setPill("数据就绪", "ok"); state.ctxReady = true; }
-        else { setPill("拉取失败", "bad"); }
-        if (st.summary) renderGroups(st.summary.groups || []);
-        $("#ctxInfo").textContent = "数据：" + (st.summary?.generated || "");
+        else {
+          setPill("拉取失败", "bad");
+          // 拉取失败但本机还有旧数据时，仍允许推荐（降级用旧数据）
+          if (st.has_ctx && st.summary) {
+            state.ctxReady = true;
+            renderGroups(st.summary.groups || []);
+            $("#ctxInfo").textContent = "拉取失败，正在使用上次缓存数据（可重试拉取）";
+            flash("拉取失败，已回退到缓存数据");
+          }
+        }
+        if (st.summary && st.state === "done") renderGroups(st.summary.groups || []);
+        $("#ctxInfo").textContent = st.state === "done"
+          ? "数据：" + (st.summary?.generated || "")
+          : $("#ctxInfo").textContent;
         setTimeout(() => showProgress(false), 1200);
       }
     }, 1500);
@@ -188,6 +220,10 @@ function openModal() {
   $("#modal").classList.remove("hidden");
   if (state.lastFsCheck) renderFsResult(state.lastFsCheck);
 }
+function closeModal() {
+  $("#modal").classList.add("hidden");
+  $("#testMsg").textContent = "";
+}
 async function saveSettings() {
   // 留空 = 不修改（避免把已保存的 Key / Secret 清掉）
   const body = { feishu_app_id: $("#fsId").value.trim() };
@@ -195,7 +231,9 @@ async function saveSettings() {
   if (key) body.api_key = key;
   const sec = $("#fsSecret").value.trim();
   if (sec) body.feishu_app_secret = sec;
-  const r = await api.post("/api/settings", body);
+  let r;
+  try { r = await api.post("/api/settings", body); }
+  catch (e) { alert("保存失败：" + (e.message || e)); return; }
   if (r.ok) {
     $("#fsSecret").value = "";
     if (r.feishu_configured) $("#fsSecret").placeholder = "已保存，留空则不修改";
@@ -207,7 +245,9 @@ async function saveSettings() {
 }
 async function testConn() {
   $("#testMsg").textContent = "测试中…";
-  const r = await api.post("/api/test", { api_key: $("#apiKey").value.trim() });
+  let r;
+  try { r = await api.post("/api/test", { api_key: $("#apiKey").value.trim() }, 30000); }
+  catch (e) { r = { ok: false, error: e.message || String(e) }; }
   $("#testMsg").textContent = r.ok ? `连接成功：${r.groups} 个发布组${r.user ? "，账号 " + r.user : ""}` : "失败：" + r.error;
 }
 
@@ -304,29 +344,63 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   $("#btnSettings").onclick = openModal;
   $("#btnSetup").onclick = openModal;
-  $("#btnCancel").onclick = () => $("#modal").classList.add("hidden");
+  $("#btnCancel").onclick = closeModal;
+  // 取消/重置交互：Esc 或点击遮罩也能关闭，关闭不残留任何状态
+  $("#modal").addEventListener("click", (e) => { if (e.target === $("#modal")) closeModal(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("#modal").classList.contains("hidden")) closeModal();
+  });
   $("#btnSave").onclick = saveSettings;
   $("#btnTest").onclick = testConn;
   $("#btnFsCheck").onclick = checkFeishu;
   $("#btnRefresh").onclick = async () => {
-    const r = await api.post("/api/refresh", {});
-    if (r.ok) { showProgress(true); $("#log").textContent = "开始拉取…"; setPill("拉取中…", "run"); refreshStatus(); }
-    else alert(r.error || "启动失败");
+    if (state.poll) { flash("正在拉取中，请稍候…"); return; }
+    try {
+      const r = await api.post("/api/refresh", {});
+      if (r.ok) { showProgress(true); $("#log").textContent = "开始拉取…"; setPill("拉取中…", "run"); refreshStatus(); }
+      else alert(r.error || "启动失败");
+    } catch (e) { alert("拉取请求失败：" + (e.message || e)); }
   };
   $("#btnRun").onclick = async () => {
-    if (!state.ctxReady) { const ok = confirm("还没拉取数据，是否现在拉取？"); if (ok) return $("#btnRefresh").click(); return; }
-    $("#btnRun").disabled = true; $("#btnRun").textContent = "生成中…";
-    const r = await api.post("/api/recommend", { per_group: parseInt($("#perGroup").value, 10) });
-    $("#btnRun").disabled = false; $("#btnRun").textContent = "生成推荐";
-    if (r.ok) renderReco(r); else alert(r.error || "生成失败");
+    const btn = $("#btnRun");
+    if (btn.disabled) return;  // 防重入
+    if (!state.ctxReady) {
+      if (state.poll) { flash("正在拉取数据，完成后即可生成推荐"); return; }
+      if (confirm("还没拉取数据，是否现在拉取？")) $("#btnRefresh").click();
+      return;
+    }
+    btn.disabled = true; btn.textContent = "生成中…";
+    try {
+      let r;
+      try {
+        r = await api.post("/api/recommend", { per_group: parseInt($("#perGroup").value, 10) }, 120000);
+      } catch (e) { r = { ok: false, error: e.message || String(e) }; }
+      if (r.ok) {
+        try { renderReco(r); }
+        catch (e) { alert("推荐结果渲染失败：" + (e.message || e)); }
+      } else alert(r.error || "生成失败");
+    } finally {
+      btn.disabled = false; btn.textContent = "生成推荐";  // 任何路径都恢复可点
+    }
   };
   $("#btnAssign").onclick = async () => {
+    const btn = $("#btnAssign");
+    if (btn.disabled) return;  // 防重入
     const names = $("#names").value;
     if (!names.trim()) return alert("请先填写剧名");
-    $("#btnAssign").disabled = true; $("#btnAssign").textContent = "生成中…";
-    const r = await api.post("/api/assign", { names });
-    $("#btnAssign").disabled = false; $("#btnAssign").textContent = "生成定组表";
-    if (r.ok) renderAssign(r); else alert(r.error || "生成失败");
+    btn.disabled = true; btn.textContent = "生成中…";
+    try {
+      let r;
+      try {
+        r = await api.post("/api/assign", { names }, 180000);
+      } catch (e) { r = { ok: false, error: e.message || String(e) }; }
+      if (r.ok) {
+        try { renderAssign(r); }
+        catch (e) { alert("定组结果渲染失败：" + (e.message || e)); }
+      } else alert(r.error || "生成失败");
+    } finally {
+      btn.disabled = false; btn.textContent = "生成定组表";  // 任何路径都恢复可点
+    }
   };
   $("#btnExport1").onclick = () => exportCsv("reco");
   $("#btnExport2").onclick = () => exportCsv("assign");
@@ -340,7 +414,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   await refreshStatus();
   if (state.ctxReady) {
-    const r = await api.post("/api/recommend", { per_group: 3 });
-    if (r.ok) renderReco(r);
+    try {
+      const r = await api.post("/api/recommend", { per_group: 3 });
+      if (r.ok) renderReco(r);
+    } catch (e) { /* 首屏推荐失败不打断后续交互，可手动重试 */ }
   }
 });
