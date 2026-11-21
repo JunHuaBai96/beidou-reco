@@ -28,7 +28,7 @@ from core.mcp import DEFAULT_URL, Mcp, McpError
 from core.sources import Feishu
 
 APP_NAME = "北斗短剧素材推荐助手"
-VERSION = "1.1.3"
+VERSION = "1.2.0"
 DEFAULT_PORT = 18765
 
 APP_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "BeidouReco")
@@ -126,6 +126,20 @@ class State:
 
 
 S = State()
+HTTPD = None          # 全局服务句柄，供退出接口优雅关停
+
+
+def shutdown_and_exit(delay: float = 0.6):
+    """先回包，再关服务、退出进程（保证浏览器能收到响应）。"""
+    def _do():
+        try:
+            if HTTPD:
+                HTTPD.shutdown()
+                HTTPD.server_close()
+        except Exception:
+            pass
+        os._exit(0)
+    threading.Timer(delay, _do).start()
 
 
 # ---------------------------------------------------------------- HTTP
@@ -170,6 +184,12 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self._send(404, b"not found", "text/plain; charset=utf-8")
             return
+        if path == "index.html":
+            # 版本号由服务端直接注入 HTML（JS 加载失败也能显示正确版本）
+            data = data.replace('<span id="verTag">\u2026</span>'.encode("utf-8"),
+                                ('<span id="verTag">v%s</span>' % VERSION).encode("utf-8"))
+            data = data.replace("<title>北斗短剧素材推荐助手</title>".encode("utf-8"),
+                                ("<title>北斗短剧素材推荐助手 v%s</title>" % VERSION).encode("utf-8"), 1)
         self._send(200, data, ctype)
 
     # ---- 路由 ----
@@ -210,6 +230,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(self._assign(self._body()))
             elif p == "/api/export":
                 self._json(self._export(self._body()))
+            elif p == "/api/shutdown":
+                self._json({"ok": True, "msg": "程序正在退出"})
+                shutdown_and_exit()
             else:
                 self._send(404, b"not found", "text/plain; charset=utf-8")
         except McpError as e:
@@ -235,7 +258,7 @@ class Handler(BaseHTTPRequestHandler):
                                           and S.cfg.get("feishu_app_secret"))}
 
     def _feishu_check(self, body: dict) -> dict:
-        """飞书接入能力检测：逐资源探测四表 + 分销表，输出可接入状态。"""
+        """飞书接入能力检测：逐资源探测四表，输出可接入状态。"""
         from core import feishu_check as FC
         app_id = (body.get("app_id") or S.cfg.get("feishu_app_id") or "").strip()
         secret = (body.get("app_secret") or S.cfg.get("feishu_app_secret") or "").strip()
@@ -399,17 +422,18 @@ def open_browser(url: str):
 
 
 def serve(port: int, do_open: bool = True):
+    global HTTPD
     for p in [port, port + 1, port + 2]:
         if port_free(p):
             port = p
             break
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    HTTPD = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     url = "http://127.0.0.1:%d/" % port
     print("%s v%s 已启动：%s" % (APP_NAME, VERSION, url), flush=True)
     if do_open:
         threading.Timer(0.8, open_browser, args=(url,)).start()
     try:
-        httpd.serve_forever()
+        HTTPD.serve_forever()
     except KeyboardInterrupt:
         pass
 
