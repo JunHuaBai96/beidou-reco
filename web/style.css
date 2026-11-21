@@ -98,6 +98,11 @@ textarea{width:100%;background:var(--panel);border:1px solid var(--line);border-
   border-radius:8px;color:var(--text);padding:9px 11px;font-size:13px}
 .req{color:var(--danger);font-size:11px;margin-left:6px}
 .tip{color:var(--muted);font-size:12px;line-height:1.7}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:grid;place-items:center;z-index:99}
+.quit-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:30px 34px;
+  text-align:center;max-width:430px}
+.quit-card h2{margin:0 0 10px}
+.quit-card .muted{margin:6px 0}
 .modal-actions{display:flex;gap:10px;margin-top:18px;align-items:center}
 details{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px}
 summary{cursor:pointer;color:#9db7e6;font-size:13px}
