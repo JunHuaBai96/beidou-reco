@@ -36,11 +36,10 @@
     <button id="btnRefresh" class="primary">拉取 / 刷新数据</button>
     <span id="ctxInfo" class="muted">数据：未加载</span>
     <div class="spacer"></div>
-    <label class="muted">每组条数
-      <select id="perGroup">
-        <option>2</option><option selected>3</option><option>4</option><option>5</option>
-      </select>
+    <label class="muted" title="每个发布组推荐几部（1–20）">每组条数
+      <input id="perGroup" class="num" type="number" min="1" max="20" step="1" value="3"/>
     </label>
+    <span class="muted">（1–20）</span>
     <button id="btnRun" class="ok">生成推荐</button>
   </section>
 
