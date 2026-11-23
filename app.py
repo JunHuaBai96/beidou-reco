@@ -28,7 +28,7 @@ from core.mcp import DEFAULT_URL, Mcp, McpError
 from core.sources import Feishu
 
 APP_NAME = "北斗短剧素材推荐助手"
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 DEFAULT_PORT = 18765
 
 APP_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "BeidouReco")
@@ -343,7 +343,11 @@ class Handler(BaseHTTPRequestHandler):
             return {"ok": False, "error": "请先拉取数据"}
         if not S.ctx.get("_mcp"):
             S.ctx["_mcp"] = S.mcp()
-        per = int(body.get("per_group") or reco.MAX_PER_GROUP)
+        try:
+            per = int(body.get("per_group") or 3)
+        except Exception:
+            per = 3
+        per = max(reco.MIN_PER_GROUP, min(reco.MAX_PER_GROUP, per))
         res = reco.recommend(S.ctx, want_per_group=per)
         return {"ok": True, **res}
 
