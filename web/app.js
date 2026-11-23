@@ -123,13 +123,28 @@ function renderGroups(groups) {
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const tagsHtml = (t) => (t || []).map(x => `<span class="gtag">${esc(x)}</span>`).join(" ");
 
+/* 每组条数：读取输入并夹在 1~20，回写到控件（非法输入回退 3） */
+function perGroupVal() {
+  const el = $("#perGroup");
+  let n = parseInt(el.value, 10);
+  if (!Number.isFinite(n)) n = 3;
+  n = Math.max(1, Math.min(20, n));
+  el.value = n;
+  return n;
+}
+
 function renderReco(data) {
   const rows = data.rows || [];
   state.recoRows = rows;
   const s = data.summary || {};
   const d = s.dash || {};
+  const cnt = {};
+  rows.forEach(r => { cnt[r.group] = (cnt[r.group] || 0) + 1; });
+  const cntText = Object.entries(cnt)
+    .map(([g, n]) => `${g.split("|").pop()} ${n}`).join(" · ");
   $("#recoMeta").innerHTML =
-    `数据时间 ${esc(s.generated || "")}；数据源：${Object.entries(s.sources || {}).map(([k, v]) => `${esc(k)} ${esc(v)}`).join(" · ")}` +
+    `数据时间 ${esc(s.generated || "")}；每组条数：目标 ${esc(s.per_group ?? "-")}（实际 ${esc(cntText || "-")}）` +
+    `；数据源：${Object.entries(s.sources || {}).map(([k, v]) => `${esc(k)} ${esc(v)}`).join(" · ")}` +
     (d.yesterday ? `<br/>看板昨日 ${esc(d.yesterday.date)}：${d.yesterday.order_count} 单 ¥${d.yesterday.amount}；今日：${d.today?.order_count ?? "-"} 单 ¥${d.today?.amount ?? "-"}` : "") +
     (s.feishu && s.feishu.configured && (s.feishu.core_ok || 0) < (s.feishu.core_total || 4)
       ? `<br/><span style="color:var(--warn)">飞书接入 ${s.feishu.core_ok}/${s.feishu.core_total}，未接入：${esc((s.feishu.blocked || []).join("、"))}（这些源未参与加权，建议去设置里检测修复）</span>` : "") +
@@ -352,6 +367,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#btnSettings").onclick = openModal;
   $("#btnSetup").onclick = openModal;
   $("#btnCancel").onclick = closeModal;
+  // 每组条数：输入即校验（1~20），失焦/回车归一到合法值
+  $("#perGroup").addEventListener("change", () => perGroupVal());
+  $("#perGroup").addEventListener("blur", () => perGroupVal());
   // 退出程序：确认 → 通知服务端关停 → 显示已退出遮罩
   $("#btnQuit").onclick = async () => {
     if (state.exited) return;
@@ -391,7 +409,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       let r;
       try {
-        r = await api.post("/api/recommend", { per_group: parseInt($("#perGroup").value, 10) }, 120000);
+        r = await api.post("/api/recommend", { per_group: perGroupVal() }, 120000);
       } catch (e) { r = { ok: false, error: e.message || String(e) }; }
       if (r.ok) {
         try { renderReco(r); }
@@ -434,7 +452,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await refreshStatus();
   if (state.ctxReady) {
     try {
-      const r = await api.post("/api/recommend", { per_group: 3 });
+      const r = await api.post("/api/recommend", { per_group: perGroupVal() });
       if (r.ok) renderReco(r);
     } catch (e) { /* 首屏推荐失败不打断后续交互，可手动重试 */ }
   }
