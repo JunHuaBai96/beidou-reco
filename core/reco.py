@@ -10,7 +10,8 @@ from . import genre as G
 
 STOCK_LOW = 150          # 单组剩余集数低于此视为紧张
 PROMO_HOT = 1000         # 推广人数 > 1000 = 热门
-MAX_PER_GROUP = 4        # 每组最多推荐条数
+MAX_PER_GROUP = 20       # 每组最多推荐条数（上限）
+MIN_PER_GROUP = 1        # 每组最少推荐条数
 ISOLATED = ("停用",)      # 隔离区不出推荐
 
 GROUP_ORDER_HINT = ["弃用组", "现实向", "女频", "潜力", "热门", "养号", "人外/奇幻", "新号组"]
@@ -177,6 +178,12 @@ def _lib_index(ctx) -> dict:
 
 # ---------------------------------------------------------------- Mode A
 def recommend(ctx, want_per_group: int = MAX_PER_GROUP) -> dict:
+    # 每组条数：强制夹在 1~20，非法值回退默认
+    try:
+        want_per_group = int(want_per_group)
+    except Exception:
+        want_per_group = 3
+    want_per_group = max(MIN_PER_GROUP, min(MAX_PER_GROUP, want_per_group))
     pidx = _plaza_index(ctx.get("plaza") or {})
     lidx = _lib_index(ctx)
     orders = ctx.get("orders") or {}
@@ -329,27 +336,28 @@ def recommend(ctx, want_per_group: int = MAX_PER_GROUP) -> dict:
             used.add(G.n3(c["name"]))
         picked_by[g["name"]] = picked
 
-    for g in need:                      # 第二轮：不够 2 部的组，用兼容候选补位
-        gb = base_group(g["name"])
-        picked = picked_by[g["name"]]
-        if len(picked) >= min(2, want_per_group):
-            continue
-        rest = []
-        for c in cands.values():
-            if G.n3(c["name"]) in used or c["fits"].get(gb, 0) <= 0:
+    # 第二轮：水填式补位——所有组轮流各取一条，共享候选均分，避免先取满的组吃光
+    progressed = True
+    while progressed:
+        progressed = False
+        for g in need:
+            gb = base_group(g["name"])
+            picked = picked_by[g["name"]]
+            if len(picked) >= want_per_group:
                 continue
-            owner = c["best_group"]
-            # 不抢还没吃饱的原属组
-            if owner in tight_by_name and len(picked_by.get(tight_by_name[owner], [])) < 2:
+            best, best_key = None, None
+            for c in cands.values():
+                if G.n3(c["name"]) in used or c["fits"].get(gb, 0) <= 0:
+                    continue
+                key = (-c["fits"].get(gb, 0), -c["score"])
+                if best_key is None or key < best_key:
+                    best_key, best = key, c
+            if best is None:
                 continue
-            rest.append(c)
-        rest.sort(key=lambda c: (-c["fits"].get(gb, 0), -c["score"]))
-        for c in rest:
-            if len(picked) >= min(2, want_per_group):
-                break
-            c["moved"] = True
-            picked.append(c)
-            used.add(G.n3(c["name"]))
+            best["moved"] = True
+            picked.append(best)
+            used.add(G.n3(best["name"]))
+            progressed = True
 
     for g in need:
         for c in picked_by[g["name"]]:
@@ -373,6 +381,7 @@ def recommend(ctx, want_per_group: int = MAX_PER_GROUP) -> dict:
 
     summary = {
         "generated": ctx.get("generated"),
+        "per_group": want_per_group,
         "sources": ctx.get("sources"),
         "errors": ctx.get("errors"),
         "feishu": ctx.get("feishu_status"),
